@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.noteit.article.repository.ArticleMediaMapper">
+
+    <resultMap id="ArticleMediaResultMap" type="com.example.noteit.article.model.ArticleMediaDO">
+        <constructor>
+            <idArg column="id" javaType="_long"/>
+            <arg column="article_id" javaType="_long"/>
+            <arg column="media_type" javaType="string"/>
+            <arg column="object_key" javaType="string"/>
+            <arg column="media_url" javaType="string"/>
+            <arg column="sort_no" javaType="_int"/>
+            <arg column="is_cover" javaType="_boolean"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+            <arg column="updated_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <insert id="batchInsert">
+        INSERT INTO article_media (
+            id, article_id, media_type, object_key, media_url, sort_no, is_cover
+        ) VALUES
+        <foreach collection="mediaList" item="item" separator=",">
+            (
+                #{item.id}, #{item.articleId}, #{item.mediaType}, #{item.objectKey},
+                #{item.mediaUrl}, #{item.sortNo}, #{item.isCover}
+            )
+        </foreach>
+    </insert>
+
+    <delete id="deleteByArticleId">
+        DELETE FROM article_media WHERE article_id = #{articleId}
+    </delete>
+
+    <select id="findByArticleId" resultMap="ArticleMediaResultMap">
+        SELECT id, article_id, media_type, object_key, media_url, sort_no, is_cover, created_at, updated_at
+        FROM article_media
+        WHERE article_id = #{articleId}
+        ORDER BY sort_no ASC, id ASC
+    </select>
+</mapper>

@@ -1,3 +1,51 @@
 spring:
   application:
     name: Noteit
+  profiles:
+    # IDEA 直接点击 main 方法旁边的三角形启动时，默认加载本机开发配置。
+    # 测试类使用 @ActiveProfiles("test")，所以不会被这里影响。
+    default: dev,local
+  jackson:
+    default-property-inclusion: non_null
+    time-zone: Asia/Shanghai
+
+server:
+  servlet:
+    context-path: /
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.example.noteit: info
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.example.noteit.article.model,com.example.noteit.file.model,com.example.noteit.interaction.model,com.example.noteit.relation.model,com.example.noteit.user.model
+  configuration:
+    map-underscore-to-camel-case: true
+    default-statement-timeout: 30
+
+noteit:
+  request-id:
+    header-name: X-Request-Id
+  auth:
+    header-name: X-User-Id
+    nickname-header-name: X-User-Nickname
+  article:
+    content-storage-mode: DB
+  oss:
+    public-base-url: https://cdn.noteit.local
+    # endpoint / bucket / 密钥当前主要服务于直传签名；
+    # 后续如果切 STS 或官方 SDK，仍沿用这一组配置。
+  ai:
+    enabled: false
+    # TODO: Wire the real AI summary provider implementation.

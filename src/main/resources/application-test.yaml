@@ -1,0 +1,31 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:h2:mem:noteit-test;MODE=MYSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  sql:
+    init:
+      mode: always
+  flyway:
+    enabled: false
+
+logging:
+  level:
+    com.example.noteit: warn
+
+management:
+  health:
+    db:
+      enabled: false
+
+noteit:
+  oss:
+    endpoint: https://oss-cn-test.aliyuncs.com
+    bucket: noteit-test
+    access-key-id: test-ak
+    access-key-secret: test-sk
+    public-base-url: https://noteit-test.oss-cn-test.aliyuncs.com

@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.noteit.relation.repository.RelationMapper">
+
+    <resultMap id="UserFollowResultMap" type="com.example.noteit.relation.model.UserFollowDO">
+        <constructor>
+            <idArg column="id" javaType="_long"/>
+            <arg column="follower_id" javaType="_long"/>
+            <arg column="followee_id" javaType="_long"/>
+            <arg column="status" javaType="_int"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+            <arg column="updated_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="UserProfileResultMap" type="com.example.noteit.user.model.UserProfileDO">
+        <constructor>
+            <idArg column="id" javaType="_long"/>
+            <arg column="nickname" javaType="string"/>
+            <arg column="avatar_url" javaType="string"/>
+            <arg column="bio" javaType="string"/>
+            <arg column="follower_count" javaType="_long"/>
+            <arg column="following_count" javaType="_long"/>
+            <arg column="article_count" javaType="_long"/>
+            <arg column="status" javaType="_int"/>
+            <arg column="version" javaType="_long"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+            <arg column="updated_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findFollowRelation" resultMap="UserFollowResultMap">
+        SELECT id, follower_id, followee_id, status, created_at, updated_at
+        FROM user_follow
+        WHERE follower_id = #{followerId}
+          AND followee_id = #{followeeId}
+    </select>
+
+    <insert id="insertFollowRelation">
+        INSERT INTO user_follow (
+            id, follower_id, followee_id, status
+        ) VALUES (
+            #{id}, #{followerId}, #{followeeId}, #{status}
+        )
+    </insert>
+
+    <update id="updateFollowStatus">
+        UPDATE user_follow
+        SET status = #{status},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <select id="countActiveFollowRelation" resultType="_int">
+        SELECT COUNT(*)
+        FROM user_follow
+        WHERE follower_id = #{followerId}
+          AND followee_id = #{followeeId}
+          AND status = 1
+    </select>
+
+    <select id="findFollowingProfiles" resultMap="UserProfileResultMap">
+        SELECT up.id, up.nickname, up.avatar_url, up.bio, up.follower_count,
+               up.following_count, up.article_count, up.status, up.version,
+               up.created_at, up.updated_at
+        FROM user_follow uf
+        INNER JOIN user_profile up ON up.id = uf.followee_id
+        WHERE uf.follower_id = #{userId}
+          AND uf.status = 1
+          AND up.status = 1
+        ORDER BY uf.updated_at DESC, uf.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countFollowingProfiles" resultType="_long">
+        SELECT COUNT(*)
+        FROM user_follow uf
+        INNER JOIN user_profile up ON up.id = uf.followee_id
+        WHERE uf.follower_id = #{userId}
+          AND uf.status = 1
+          AND up.status = 1
+    </select>
+
+    <select id="findFollowerProfiles" resultMap="UserProfileResultMap">
+        SELECT up.id, up.nickname, up.avatar_url, up.bio, up.follower_count,
+               up.following_count, up.article_count, up.status, up.version,
+               up.created_at, up.updated_at
+        FROM user_follow uf
+        INNER JOIN user_profile up ON up.id = uf.follower_id
+        WHERE uf.followee_id = #{userId}
+          AND uf.status = 1
+          AND up.status = 1
+        ORDER BY uf.updated_at DESC, uf.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countFollowerProfiles" resultType="_long">
+        SELECT COUNT(*)
+        FROM user_follow uf
+        INNER JOIN user_profile up ON up.id = uf.follower_id
+        WHERE uf.followee_id = #{userId}
+          AND uf.status = 1
+          AND up.status = 1
+    </select>
+</mapper>

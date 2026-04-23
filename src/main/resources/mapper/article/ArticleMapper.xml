@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.noteit.article.repository.ArticleMapper">
+
+    <resultMap id="ArticleResultMap" type="com.example.noteit.article.model.ArticleDO">
+        <constructor>
+            <idArg column="id" javaType="_long"/>
+            <arg column="author_id" javaType="_long"/>
+            <arg column="title" javaType="string"/>
+            <arg column="content_text" javaType="string"/>
+            <arg column="content_storage_type" javaType="string"/>
+            <arg column="content_object_key" javaType="string"/>
+            <arg column="content_url" javaType="string"/>
+            <arg column="content_format" javaType="string"/>
+            <arg column="content_preview" javaType="string"/>
+            <arg column="cover_object_key" javaType="string"/>
+            <arg column="cover_url" javaType="string"/>
+            <arg column="status" javaType="_int"/>
+            <arg column="like_count" javaType="_long"/>
+            <arg column="favorite_count" javaType="_long"/>
+            <arg column="summary_status" javaType="_int"/>
+            <arg column="summary_text" javaType="string"/>
+            <arg column="summary_version" javaType="_long"/>
+            <arg column="summary_retry_count" javaType="_int"/>
+            <arg column="summary_last_error" javaType="string"/>
+            <arg column="published_at" javaType="java.time.LocalDateTime"/>
+            <arg column="version" javaType="_long"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+            <arg column="updated_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="ArticleDetailResultMap" type="com.example.noteit.article.model.ArticleDetailDO">
+        <constructor>
+            <idArg column="id" javaType="_long"/>
+            <arg column="author_id" javaType="_long"/>
+            <arg column="title" javaType="string"/>
+            <arg column="content_text" javaType="string"/>
+            <arg column="content_storage_type" javaType="string"/>
+            <arg column="content_object_key" javaType="string"/>
+            <arg column="content_url" javaType="string"/>
+            <arg column="content_format" javaType="string"/>
+            <arg column="content_preview" javaType="string"/>
+            <arg column="cover_url" javaType="string"/>
+            <arg column="like_count" javaType="_long"/>
+            <arg column="favorite_count" javaType="_long"/>
+            <arg column="summary_status" javaType="_int"/>
+            <arg column="summary_text" javaType="string"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+            <arg column="updated_at" javaType="java.time.LocalDateTime"/>
+            <arg column="author_nickname" javaType="string"/>
+            <arg column="author_avatar_url" javaType="string"/>
+        </constructor>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO article (
+            id, author_id, title, content_text, content_storage_type, content_object_key, content_url, content_format,
+            content_preview, cover_object_key, cover_url, status, like_count, favorite_count,
+            summary_status, summary_text, summary_version, summary_retry_count, summary_last_error,
+            published_at, version
+        ) VALUES (
+            #{id}, #{authorId}, #{title}, #{contentText}, #{contentStorageType}, #{contentObjectKey}, #{contentUrl}, #{contentFormat},
+            #{contentPreview}, #{coverObjectKey}, #{coverUrl}, #{status}, #{likeCount}, #{favoriteCount},
+            #{summaryStatus}, #{summaryText}, #{summaryVersion}, #{summaryRetryCount}, #{summaryLastError},
+            #{publishedAt}, #{version}
+        )
+    </insert>
+
+    <select id="findById" resultMap="ArticleResultMap">
+        SELECT id, author_id, title, content_text, content_storage_type, content_object_key, content_url, content_format,
+               content_preview, cover_object_key, cover_url, status, like_count, favorite_count,
+               summary_status, summary_text, summary_version, summary_retry_count, summary_last_error,
+               published_at, version, created_at, updated_at
+        FROM article
+        WHERE id = #{id}
+    </select>
+
+    <select id="findDetailById" resultMap="ArticleDetailResultMap">
+        SELECT a.id,
+               a.author_id,
+               a.title,
+               a.content_text,
+               a.content_storage_type,
+               a.content_object_key,
+               a.content_url,
+               a.content_format,
+               a.content_preview,
+               a.cover_url,
+               a.like_count,
+               a.favorite_count,
+               a.summary_status,
+               a.summary_text,
+               a.created_at,
+               a.updated_at,
+               up.nickname AS author_nickname,
+               up.avatar_url AS author_avatar_url
+        FROM article a
+        LEFT JOIN user_profile up ON up.id = a.author_id
+        WHERE a.id = #{id}
+    </select>
+
+    <!-- 首页 Feed 当前走 MySQL 基础分页，后续可替换为收件箱/发件箱读模型。 -->
+    <select id="findFeedArticles" resultMap="ArticleDetailResultMap">
+        SELECT a.id,
+               a.author_id,
+               a.title,
+               a.content_text,
+               a.content_storage_type,
+               a.content_object_key,
+               a.content_url,
+               a.content_format,
+               a.content_preview,
+               a.cover_url,
+               a.like_count,
+               a.favorite_count,
+               a.summary_status,
+               a.summary_text,
+               a.created_at,
+               a.updated_at,
+               up.nickname AS author_nickname,
+               up.avatar_url AS author_avatar_url
+        FROM article a
+        LEFT JOIN user_profile up ON up.id = a.author_id
+        WHERE a.status = 1
+        <if test="authorId != null">
+          AND a.author_id = #{authorId}
+        </if>
+        ORDER BY a.published_at DESC, a.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countFeedArticles" resultType="_long">
+        SELECT COUNT(*)
+        FROM article a
+        WHERE a.status = 1
+        <if test="authorId != null">
+          AND a.author_id = #{authorId}
+        </if>
+    </select>
+
+    <select id="findLikedArticles" resultMap="ArticleDetailResultMap">
+        SELECT a.id,
+               a.author_id,
+               a.title,
+               a.content_text,
+               a.content_storage_type,
+               a.content_object_key,
+               a.content_url,
+               a.content_format,
+               a.content_preview,
+               a.cover_url,
+               a.like_count,
+               a.favorite_count,
+               a.summary_status,
+               a.summary_text,
+               a.created_at,
+               a.updated_at,
+               up.nickname AS author_nickname,
+               up.avatar_url AS author_avatar_url
+        FROM article_like al
+        INNER JOIN article a ON a.id = al.article_id
+        LEFT JOIN user_profile up ON up.id = a.author_id
+        WHERE al.user_id = #{userId}
+          AND al.status = 1
+          AND a.status = 1
+        ORDER BY al.updated_at DESC, al.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countLikedArticles" resultType="_long">
+        SELECT COUNT(*)
+        FROM article_like al
+        INNER JOIN article a ON a.id = al.article_id
+        WHERE al.user_id = #{userId}
+          AND al.status = 1
+          AND a.status = 1
+    </select>
+
+    <select id="findFavoritedArticles" resultMap="ArticleDetailResultMap">
+        SELECT a.id,
+               a.author_id,
+               a.title,
+               a.content_text,
+               a.content_storage_type,
+               a.content_object_key,
+               a.content_url,
+               a.content_format,
+               a.content_preview,
+               a.cover_url,
+               a.like_count,
+               a.favorite_count,
+               a.summary_status,
+               a.summary_text,
+               a.created_at,
+               a.updated_at,
+               up.nickname AS author_nickname,
+               up.avatar_url AS author_avatar_url
+        FROM article_favorite af
+        INNER JOIN article a ON a.id = af.article_id
+        LEFT JOIN user_profile up ON up.id = a.author_id
+        WHERE af.user_id = #{userId}
+          AND af.status = 1
+          AND a.status = 1
+        ORDER BY af.updated_at DESC, af.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countFavoritedArticles" resultType="_long">
+        SELECT COUNT(*)
+        FROM article_favorite af
+        INNER JOIN article a ON a.id = af.article_id
+        WHERE af.user_id = #{userId}
+          AND af.status = 1
+          AND a.status = 1
+    </select>
+
+    <update id="update">
+        UPDATE article
+        SET title = #{title},
+            content_text = #{contentText},
+            content_storage_type = #{contentStorageType},
+            content_object_key = #{contentObjectKey},
+            content_url = #{contentUrl},
+            content_format = #{contentFormat},
+            content_preview = #{contentPreview},
+            cover_object_key = #{coverObjectKey},
+            cover_url = #{coverUrl},
+            summary_status = #{summaryStatus},
+            summary_text = #{summaryText},
+            summary_version = #{summaryVersion},
+            summary_retry_count = #{summaryRetryCount},
+            summary_last_error = #{summaryLastError},
+            version = #{version},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND author_id = #{authorId}
+    </update>
+</mapper>

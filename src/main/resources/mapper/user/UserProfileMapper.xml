@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.noteit.user.repository.UserProfileMapper">
+
+    <resultMap id="UserProfileResultMap" type="com.example.noteit.user.model.UserProfileDO">
+        <constructor>
+            <idArg column="id" javaType="_long"/>
+            <arg column="nickname" javaType="string"/>
+            <arg column="avatar_url" javaType="string"/>
+            <arg column="bio" javaType="string"/>
+            <arg column="follower_count" javaType="_long"/>
+            <arg column="following_count" javaType="_long"/>
+            <arg column="article_count" javaType="_long"/>
+            <arg column="status" javaType="_int"/>
+            <arg column="version" javaType="_long"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+            <arg column="updated_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findById" resultMap="UserProfileResultMap">
+        SELECT id, nickname, avatar_url, bio, follower_count, following_count, article_count,
+               status, version, created_at, updated_at
+        FROM user_profile
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insert">
+        INSERT INTO user_profile (
+            id, nickname, avatar_url, bio, follower_count, following_count, article_count, status, version
+        ) VALUES (
+            #{id}, #{nickname}, #{avatarUrl}, #{bio}, #{followerCount}, #{followingCount}, #{articleCount}, #{status}, #{version}
+        )
+    </insert>
+
+    <update id="updateBasicProfile">
+        UPDATE user_profile
+        SET nickname = #{nickname},
+            avatar_url = #{avatarUrl},
+            bio = #{bio},
+            version = version + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{userId}
+          AND status = 1
+    </update>
+
+    <update id="incrementArticleCount">
+        UPDATE user_profile
+        SET article_count = article_count + #{delta},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{userId}
+    </update>
+
+    <update id="incrementFollowerCount">
+        UPDATE user_profile
+        SET follower_count = CASE
+                WHEN #{delta} &lt; 0 AND follower_count &lt; ABS(#{delta}) THEN 0
+                ELSE follower_count + #{delta}
+            END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{userId}
+    </update>
+
+    <update id="incrementFollowingCount">
+        UPDATE user_profile
+        SET following_count = CASE
+                WHEN #{delta} &lt; 0 AND following_count &lt; ABS(#{delta}) THEN 0
+                ELSE following_count + #{delta}
+            END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{userId}
+    </update>
+</mapper>

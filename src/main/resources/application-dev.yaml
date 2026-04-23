@@ -1,0 +1,42 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: jdbc:mysql://${NOTEIT_DB_HOST:localhost}:${NOTEIT_DB_PORT:3306}/${NOTEIT_DB_NAME:noteit}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${NOTEIT_DB_USERNAME:root}
+    password: ${NOTEIT_DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    encoding: UTF-8
+
+mybatis:
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+logging:
+  level:
+    org.mybatis: info
+    org.flywaydb: info
+
+noteit:
+  article:
+    content-storage-mode: ${NOTEIT_ARTICLE_CONTENT_STORAGE_MODE:DB}
+  oss:
+    endpoint: ${NOTEIT_OSS_ENDPOINT:https://oss-cn-hangzhou.aliyuncs.com}
+    bucket: ${NOTEIT_OSS_BUCKET:noteit-dev}
+    access-key-id: ${NOTEIT_OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${NOTEIT_OSS_ACCESS_KEY_SECRET:}
+    public-base-url: ${NOTEIT_OSS_PUBLIC_BASE_URL:https://noteit-dev.oss-cn-hangzhou.aliyuncs.com}
+    # TODO: 后续如果接 STS，这里继续保留 bucket 和 endpoint，避免业务层再感知供应商细节。
+  ai:
+    enabled: ${NOTEIT_AI_ENABLED:false}
+    provider: ${NOTEIT_AI_PROVIDER:mock}
+    # TODO: Add model, timeout and secret settings for the AI summary provider.

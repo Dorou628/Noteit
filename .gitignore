@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local machine overrides
+src/main/resources/application-local.yaml
