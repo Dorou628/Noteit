@@ -1,10 +1,13 @@
 package com.example.noteit.relation.service;
 
 import com.example.noteit.common.constant.ErrorCode;
+import com.example.noteit.common.event.DomainEventPublisher;
 import com.example.noteit.common.exception.BusinessException;
 import com.example.noteit.common.id.IdGenerator;
 import com.example.noteit.common.response.PageResponse;
+import com.example.noteit.common.util.TimeProvider;
 import com.example.noteit.relation.domain.RelationDomainService;
+import com.example.noteit.relation.event.FollowRelationshipChangedEvent;
 import com.example.noteit.relation.model.UserFollowDO;
 import com.example.noteit.relation.model.UserFollowResponse;
 import com.example.noteit.relation.repository.RelationRepository;
@@ -26,17 +29,23 @@ public class RelationApplicationService {
     private final RelationDomainService relationDomainService;
     private final RelationRepository relationRepository;
     private final UserProfileRepository userProfileRepository;
+    private final DomainEventPublisher domainEventPublisher;
+    private final TimeProvider timeProvider;
 
     public RelationApplicationService(
             IdGenerator idGenerator,
             RelationDomainService relationDomainService,
             RelationRepository relationRepository,
-            UserProfileRepository userProfileRepository
+            UserProfileRepository userProfileRepository,
+            DomainEventPublisher domainEventPublisher,
+            TimeProvider timeProvider
     ) {
         this.idGenerator = idGenerator;
         this.relationDomainService = relationDomainService;
         this.relationRepository = relationRepository;
         this.userProfileRepository = userProfileRepository;
+        this.domainEventPublisher = domainEventPublisher;
+        this.timeProvider = timeProvider;
     }
 
     @Transactional
@@ -47,6 +56,7 @@ public class RelationApplicationService {
         ensureActiveUser(followeeId);
 
         UserFollowDO existing = relationRepository.findFollowRelation(currentUserId, followeeId).orElse(null);
+        boolean changed = false;
         if (existing == null) {
             relationRepository.insertFollowRelation(new UserFollowDO(
                     idGenerator.nextId(),
@@ -57,9 +67,14 @@ public class RelationApplicationService {
                     null
             ));
             incrementFollowCounters(currentUserId, followeeId, 1);
+            changed = true;
         } else if (existing.status() != ACTIVE_STATUS) {
             relationRepository.updateFollowStatus(existing.id(), ACTIVE_STATUS);
             incrementFollowCounters(currentUserId, followeeId, 1);
+            changed = true;
+        }
+        if (changed) {
+            publishFollowChanged(currentUserId, followeeId, true);
         }
 
         return new UserFollowResponse(targetUserId, true);
@@ -72,12 +87,17 @@ public class RelationApplicationService {
         ensureActiveUser(currentUserId);
         ensureActiveUser(followeeId);
 
-        relationRepository.findFollowRelation(currentUserId, followeeId)
+        UserFollowDO existing = relationRepository.findFollowRelation(currentUserId, followeeId)
                 .filter(relation -> relation.status() != INACTIVE_STATUS)
-                .ifPresent(relation -> {
-                    relationRepository.updateFollowStatus(relation.id(), INACTIVE_STATUS);
-                    incrementFollowCounters(currentUserId, followeeId, -1);
-                });
+                .orElse(null);
+        boolean changed = existing != null;
+        if (changed) {
+            relationRepository.updateFollowStatus(existing.id(), INACTIVE_STATUS);
+            incrementFollowCounters(currentUserId, followeeId, -1);
+        }
+        if (changed) {
+            publishFollowChanged(currentUserId, followeeId, false);
+        }
 
         return new UserFollowResponse(targetUserId, false);
     }
@@ -121,6 +141,15 @@ public class RelationApplicationService {
     private void incrementFollowCounters(long followerId, long followeeId, long delta) {
         userProfileRepository.incrementFollowingCount(followerId, delta);
         userProfileRepository.incrementFollowerCount(followeeId, delta);
+    }
+
+    private void publishFollowChanged(long followerUserId, long followeeUserId, boolean following) {
+        domainEventPublisher.publish(new FollowRelationshipChangedEvent(
+                followerUserId,
+                followeeUserId,
+                following,
+                timeProvider.now()
+        ));
     }
 
     private UserProfileDO ensureActiveUser(long userId) {

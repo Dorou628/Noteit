@@ -73,6 +73,16 @@ public class UserController {
         ));
     }
 
+    @GetMapping("/me/feed")
+    public ApiResponse<PageResponse<ArticleCardResponse>> getMyFollowingFeed(@Valid PageQuery pageQuery) {
+        Long currentUserId = currentUserResolver.getRequiredUserId();
+        return ApiResponse.success(userApplicationService.getMyFollowingFeed(
+                currentUserId,
+                pageQuery.normalizedPageNo(),
+                pageQuery.normalizedPageSize()
+        ));
+    }
+
     @GetMapping("/me/favorited-articles")
     public ApiResponse<PageResponse<ArticleCardResponse>> getMyFavoritedArticles(@Valid PageQuery pageQuery) {
         Long currentUserId = currentUserResolver.getRequiredUserId();

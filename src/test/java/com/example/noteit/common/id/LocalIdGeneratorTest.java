@@ -20,10 +20,11 @@ class LocalIdGeneratorTest {
     @Test
     void syncToAtLeastShouldAdvanceSequencePastPersistedMax() {
         LocalIdGenerator generator = new LocalIdGenerator();
+        long persistedMax = generator.nextId() + 100;
 
-        generator.syncToAtLeast(12_345L);
+        generator.syncToAtLeast(persistedMax);
 
-        assertThat(generator.nextId()).isEqualTo(12_346L);
+        assertThat(generator.nextId()).isEqualTo(persistedMax + 1);
     }
 
     @Test

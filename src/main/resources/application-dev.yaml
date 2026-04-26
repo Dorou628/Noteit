@@ -16,6 +16,13 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     encoding: UTF-8
+  data:
+    redis:
+      host: ${NOTEIT_REDIS_HOST:localhost}
+      port: ${NOTEIT_REDIS_PORT:6379}
+      password: ${NOTEIT_REDIS_PASSWORD:}
+      database: ${NOTEIT_REDIS_DATABASE:0}
+      timeout: ${NOTEIT_REDIS_TIMEOUT:2s}
 
 mybatis:
   configuration:
@@ -27,6 +34,11 @@ logging:
     org.flywaydb: info
 
 noteit:
+  feed:
+    cache:
+      enabled: ${NOTEIT_FEED_CACHE_ENABLED:false}
+      ttl: ${NOTEIT_FEED_CACHE_TTL:30m}
+      rebuild-limit: ${NOTEIT_FEED_CACHE_REBUILD_LIMIT:1000}
   article:
     content-storage-mode: ${NOTEIT_ARTICLE_CONTENT_STORAGE_MODE:DB}
   oss:

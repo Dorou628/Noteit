@@ -1,6 +1,9 @@
 DROP TABLE IF EXISTS article_media;
 DROP TABLE IF EXISTS article_like;
 DROP TABLE IF EXISTS article_favorite;
+DROP TABLE IF EXISTS event_outbox;
+DROP TABLE IF EXISTS user_inbox;
+DROP TABLE IF EXISTS article_outbox;
 DROP TABLE IF EXISTS user_follow;
 DROP TABLE IF EXISTS article;
 DROP TABLE IF EXISTS upload_task;
@@ -47,6 +50,25 @@ CREATE TABLE article (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE article_outbox (
+    id BIGINT PRIMARY KEY,
+    author_id BIGINT NOT NULL,
+    article_id BIGINT NOT NULL,
+    published_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_article_outbox_author_article UNIQUE (author_id, article_id)
+);
+
+CREATE TABLE user_inbox (
+    id BIGINT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    author_id BIGINT NOT NULL,
+    article_id BIGINT NOT NULL,
+    published_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_user_inbox_user_article UNIQUE (user_id, article_id)
+);
+
 CREATE TABLE article_media (
     id BIGINT PRIMARY KEY,
     article_id BIGINT NOT NULL,
@@ -87,6 +109,22 @@ CREATE TABLE user_follow (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uk_user_follow_follower_followee UNIQUE (follower_id, followee_id)
+);
+
+CREATE TABLE event_outbox (
+    id BIGINT PRIMARY KEY,
+    event_id VARCHAR(64) NOT NULL,
+    event_type VARCHAR(64) NOT NULL,
+    aggregate_type VARCHAR(64) NOT NULL,
+    aggregate_id BIGINT NOT NULL,
+    payload CLOB NOT NULL,
+    status TINYINT NOT NULL DEFAULT 0,
+    retry_count INT NOT NULL DEFAULT 0,
+    next_retry_at TIMESTAMP,
+    last_error VARCHAR(512),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_event_outbox_event_id UNIQUE (event_id)
 );
 
 CREATE TABLE upload_task (

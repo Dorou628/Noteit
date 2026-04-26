@@ -2,6 +2,7 @@ package com.example.noteit.article.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.noteit.common.event.EventOutboxWorker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,9 @@ class ArticleControllerIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private EventOutboxWorker eventOutboxWorker;
+
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -36,6 +40,8 @@ class ArticleControllerIntegrationTest {
     void setUp() {
         jdbcTemplate.update("DELETE FROM article_like");
         jdbcTemplate.update("DELETE FROM article_favorite");
+        jdbcTemplate.update("DELETE FROM user_inbox");
+        jdbcTemplate.update("DELETE FROM article_outbox");
         jdbcTemplate.update("DELETE FROM user_follow");
         jdbcTemplate.update("DELETE FROM article_media");
         jdbcTemplate.update("DELETE FROM article");
@@ -158,6 +164,177 @@ class ArticleControllerIntegrationTest {
     }
 
     @Test
+    void updateArticleShouldOnlyAllowAuthor() throws Exception {
+        String articleId = createArticle("Original Title", "original", "3251", "OriginalAuthor");
+
+        HttpResponse<String> forbiddenResponse = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/articles/" + articleId))
+                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .header("X-User-Id", "3252")
+                        .method("PATCH", HttpRequest.BodyPublishers.ofString(updatePayload("Hacked Title", "hacked")))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+
+        assertThat(forbiddenResponse.statusCode()).isEqualTo(403);
+        assertThat(forbiddenResponse.body()).contains("ARTICLE_AUTHOR_MISMATCH");
+
+        HttpResponse<String> updateResponse = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/articles/" + articleId))
+                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .header("X-User-Id", "3251")
+                        .method("PATCH", HttpRequest.BodyPublishers.ofString(updatePayload("Updated Title", "updated")))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+
+        assertThat(updateResponse.statusCode()).isEqualTo(200);
+        JsonNode updated = objectMapper.readTree(updateResponse.body()).path("data");
+        assertThat(updated.path("title").asText()).isEqualTo("Updated Title");
+        assertThat(updated.path("content").asText()).isEqualTo("正文-updated");
+    }
+
+    @Test
+    void followingFeedShouldUseInboxBackfilledWhenUserFollowsAuthor() throws Exception {
+        String firstArticleId = createArticle("Outbox First", "outbox-first", "3301", "OutboxAuthor");
+        String secondArticleId = createArticle("Outbox Second", "outbox-second", "3301", "OutboxAuthor");
+        insertUserProfile(3998, "InboxReader");
+
+        follow("3998", "3301");
+
+        HttpResponse<String> feedResponse = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/users/me/feed?pageNo=1&pageSize=10"))
+                        .header("X-User-Id", "3998")
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+
+        assertThat(feedResponse.statusCode()).isEqualTo(200);
+        JsonNode feed = objectMapper.readTree(feedResponse.body()).path("data");
+        assertThat(feed.path("total").asLong()).isEqualTo(2);
+        assertThat(feed.path("records")).hasSize(2);
+        assertThat(feed.path("records").get(0).path("id").asText()).isEqualTo(secondArticleId);
+        assertThat(feed.path("records").get(1).path("id").asText()).isEqualTo(firstArticleId);
+    }
+
+    @Test
+    void followingFeedShouldReceiveNewArticlesAndRemoveThemAfterUnfollow() throws Exception {
+        createArticle("Before Follow", "before-follow", "3401", "FollowedAuthor");
+        insertUserProfile(3997, "FollowingReader");
+        follow("3997", "3401");
+
+        String newArticleId = createArticle("After Follow", "after-follow", "3401", "FollowedAuthor");
+
+        HttpResponse<String> feedResponse = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/users/me/feed?pageNo=1&pageSize=10"))
+                        .header("X-User-Id", "3997")
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+
+        assertThat(feedResponse.statusCode()).isEqualTo(200);
+        JsonNode feed = objectMapper.readTree(feedResponse.body()).path("data");
+        assertThat(feed.path("total").asLong()).isEqualTo(2);
+        assertThat(feed.path("records").get(0).path("id").asText()).isEqualTo(newArticleId);
+
+        unfollow("3997", "3401");
+
+        HttpResponse<String> emptyFeedResponse = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/users/me/feed?pageNo=1&pageSize=10"))
+                        .header("X-User-Id", "3997")
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+
+        assertThat(emptyFeedResponse.statusCode()).isEqualTo(200);
+        JsonNode emptyFeed = objectMapper.readTree(emptyFeedResponse.body()).path("data");
+        assertThat(emptyFeed.path("total").asLong()).isEqualTo(0);
+        assertThat(emptyFeed.path("records")).isEmpty();
+    }
+
+    @Test
+    void deleteArticleShouldRemoveArticleFromDetailPublicFeedAndFollowingFeed() throws Exception {
+        String articleId = createArticle("Delete Me", "delete-me", "3501", "DeleteAuthor");
+        insertUserProfile(3996, "DeleteReader");
+        follow("3996", "3501");
+
+        HttpResponse<String> deleteResponse = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/articles/" + articleId))
+                        .header("X-User-Id", "3501")
+                        .DELETE()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+
+        assertThat(deleteResponse.statusCode()).isEqualTo(200);
+        drainEventOutbox();
+
+        HttpResponse<String> detailResponse = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/articles/" + articleId))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+        assertThat(detailResponse.statusCode()).isEqualTo(404);
+
+        HttpResponse<String> publicFeedResponse = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/articles?pageNo=1&pageSize=10"))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+        JsonNode publicFeed = objectMapper.readTree(publicFeedResponse.body()).path("data");
+        assertThat(publicFeed.path("total").asLong()).isEqualTo(0);
+        assertThat(publicFeed.path("records")).isEmpty();
+
+        HttpResponse<String> followingFeedResponse = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/users/me/feed?pageNo=1&pageSize=10"))
+                        .header("X-User-Id", "3996")
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+        JsonNode followingFeed = objectMapper.readTree(followingFeedResponse.body()).path("data");
+        assertThat(followingFeed.path("total").asLong()).isEqualTo(0);
+        assertThat(followingFeed.path("records")).isEmpty();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM article_outbox WHERE article_id = ?", Long.class, Long.parseLong(articleId)))
+                .isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM user_inbox WHERE article_id = ?", Long.class, Long.parseLong(articleId)))
+                .isZero();
+    }
+
+    @Test
+    void deleteArticleShouldOnlyAllowAuthor() throws Exception {
+        String articleId = createArticle("Keep Me", "keep-me", "3601", "KeepAuthor");
+
+        HttpResponse<String> deleteResponse = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/articles/" + articleId))
+                        .header("X-User-Id", "3602")
+                        .DELETE()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+
+        assertThat(deleteResponse.statusCode()).isEqualTo(403);
+        assertThat(deleteResponse.body()).contains("ARTICLE_AUTHOR_MISMATCH");
+        assertThat(jdbcTemplate.queryForObject("SELECT status FROM article WHERE id = ?", Integer.class, Long.parseLong(articleId)))
+                .isEqualTo(1);
+    }
+
+    @Test
     void createArticleShouldReturnBadRequestWhenContentMissing() throws Exception {
         HttpResponse<String> createResponse = httpClient.send(
                 HttpRequest.newBuilder()
@@ -225,6 +402,64 @@ class ArticleControllerIntegrationTest {
         );
 
         assertThat(createResponse.statusCode()).isEqualTo(200);
+        drainEventOutbox();
         return objectMapper.readTree(createResponse.body()).path("data").path("id").asText();
+    }
+
+    private String updatePayload(String title, String token) {
+        return """
+                {
+                  "title": "%s",
+                  "content": "正文-%s",
+                  "contentFormat": "MARKDOWN",
+                  "contentPreview": "预览-%s",
+                  "coverObjectKey": "article/image/2026/04/22/%s-cover.jpg",
+                  "coverUrl": "https://cdn.noteit.test/article/image/%s-cover.jpg"
+                }
+                """.formatted(title, token, token, token, token);
+    }
+
+    private void insertUserProfile(long userId, String nickname) {
+        jdbcTemplate.update(
+                "INSERT INTO user_profile (id, nickname, status) VALUES (?, ?, 1)",
+                userId,
+                nickname
+        );
+    }
+
+    private void follow(String followerId, String followeeId) throws Exception {
+        HttpResponse<String> response = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/users/" + followeeId + "/follow"))
+                        .header("X-User-Id", followerId)
+                        .PUT(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+        assertThat(response.statusCode())
+                .withFailMessage("follow failed, response body: %s", response.body())
+                .isEqualTo(200);
+        drainEventOutbox();
+    }
+
+    private void unfollow(String followerId, String followeeId) throws Exception {
+        HttpResponse<String> response = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl() + "/api/v1/users/" + followeeId + "/follow"))
+                        .header("X-User-Id", followerId)
+                        .DELETE()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+        assertThat(response.statusCode())
+                .withFailMessage("unfollow failed, response body: %s", response.body())
+                .isEqualTo(200);
+        drainEventOutbox();
+    }
+
+    private void drainEventOutbox() {
+        for (int i = 0; i < 3; i++) {
+            eventOutboxWorker.consumePendingEvents();
+        }
     }
 }

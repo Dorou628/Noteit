@@ -1,7 +1,10 @@
 package com.example.noteit.article.service;
 
 import com.example.noteit.article.domain.ArticleContentStorageGateway;
+import com.example.noteit.article.domain.CachedTimelinePage;
+import com.example.noteit.article.domain.FeedTimelineCache;
 import com.example.noteit.article.domain.StoredArticleContent;
+import com.example.noteit.article.event.ArticleDeletedEvent;
 import com.example.noteit.article.event.ArticlePublishedEvent;
 import com.example.noteit.article.event.ArticleUpdatedEvent;
 import com.example.noteit.article.model.ArticleCardResponse;
@@ -13,9 +16,11 @@ import com.example.noteit.article.model.ArticleImageRequest;
 import com.example.noteit.article.model.ArticleMediaDO;
 import com.example.noteit.article.model.AuthorView;
 import com.example.noteit.article.model.CreateArticleRequest;
+import com.example.noteit.article.model.FeedTimelineEntryDO;
 import com.example.noteit.article.model.SummaryView;
 import com.example.noteit.article.model.UpdateArticleRequest;
 import com.example.noteit.article.repository.ArticleRepository;
+import com.example.noteit.article.repository.FeedTimelineRepository;
 import com.example.noteit.common.constant.ErrorCode;
 import com.example.noteit.common.constant.SummaryStatus;
 import com.example.noteit.common.context.UserContext;
@@ -30,6 +35,7 @@ import com.example.noteit.interaction.service.InteractionApplicationService;
 import com.example.noteit.relation.repository.RelationRepository;
 import com.example.noteit.user.model.UserProfileDO;
 import com.example.noteit.user.repository.UserProfileRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -38,7 +44,9 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -50,8 +58,11 @@ public class ArticleApplicationService {
     private final ArticleRepository articleRepository;
     private final UserProfileRepository userProfileRepository;
     private final ArticleContentStorageGateway articleContentStorageGateway;
+    private final FeedTimelineRepository feedTimelineRepository;
+    private final FeedTimelineCache feedTimelineCache;
     private final InteractionApplicationService interactionApplicationService;
     private final RelationRepository relationRepository;
+    private final int feedCacheRebuildLimit;
 
     public ArticleApplicationService(
             IdGenerator idGenerator,
@@ -60,8 +71,11 @@ public class ArticleApplicationService {
             ArticleRepository articleRepository,
             UserProfileRepository userProfileRepository,
             ArticleContentStorageGateway articleContentStorageGateway,
+            FeedTimelineRepository feedTimelineRepository,
+            FeedTimelineCache feedTimelineCache,
             InteractionApplicationService interactionApplicationService,
-            RelationRepository relationRepository
+            RelationRepository relationRepository,
+            @Value("${noteit.feed.cache.rebuild-limit:1000}") int feedCacheRebuildLimit
     ) {
         this.idGenerator = idGenerator;
         this.timeProvider = timeProvider;
@@ -69,8 +83,11 @@ public class ArticleApplicationService {
         this.articleRepository = articleRepository;
         this.userProfileRepository = userProfileRepository;
         this.articleContentStorageGateway = articleContentStorageGateway;
+        this.feedTimelineRepository = feedTimelineRepository;
+        this.feedTimelineCache = feedTimelineCache;
         this.interactionApplicationService = interactionApplicationService;
         this.relationRepository = relationRepository;
+        this.feedCacheRebuildLimit = feedCacheRebuildLimit;
     }
 
     /**
@@ -103,6 +120,53 @@ public class ArticleApplicationService {
                 .map(article -> toCardResponse(article, currentUserId))
                 .toList();
         return new PageResponse<>(pageNo, pageSize, total, records);
+    }
+
+    public PageResponse<ArticleCardResponse> getFollowingFeed(Long currentUserId, int pageNo, int pageSize) {
+        int offset = (pageNo - 1) * pageSize;
+        Optional<CachedTimelinePage> cachedPage = feedTimelineCache.findInboxPage(currentUserId, offset, pageSize);
+        if (cachedPage.isPresent()) {
+            CachedTimelinePage page = cachedPage.get();
+            List<ArticleDetailDO> articles = findDetailsInTimelineOrder(page.articleIds());
+            List<ArticleCardResponse> records = articles.stream()
+                    .map(article -> toCardResponse(article, currentUserId))
+                    .toList();
+            return new PageResponse<>(pageNo, pageSize, page.total(), records);
+        }
+
+        List<ArticleDetailDO> articles = feedTimelineRepository.findInboxArticles(currentUserId, offset, pageSize);
+        long total = feedTimelineRepository.countInboxArticles(currentUserId);
+        rebuildInboxCache(currentUserId, total);
+        List<ArticleCardResponse> records = articles.stream()
+                .map(article -> toCardResponse(article, currentUserId))
+                .toList();
+        return new PageResponse<>(pageNo, pageSize, total, records);
+    }
+
+    private void rebuildInboxCache(Long currentUserId, long total) {
+        List<FeedTimelineEntryDO> entries = feedTimelineRepository.findRecentInboxEntries(
+                currentUserId,
+                Math.max(feedCacheRebuildLimit, 0)
+        );
+        feedTimelineCache.rebuildInbox(currentUserId, entries, total);
+    }
+
+    private List<ArticleDetailDO> findDetailsInTimelineOrder(List<Long> articleIds) {
+        if (articleIds == null || articleIds.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, ArticleDetailDO> detailById = new HashMap<>();
+        for (ArticleDetailDO detail : articleRepository.findDetailsByIds(articleIds)) {
+            detailById.put(detail.id(), detail);
+        }
+        List<ArticleDetailDO> ordered = new ArrayList<>();
+        for (Long articleId : articleIds) {
+            ArticleDetailDO detail = detailById.get(articleId);
+            if (detail != null) {
+                ordered.add(detail);
+            }
+        }
+        return ordered;
     }
 
     /**
@@ -182,6 +246,9 @@ public class ArticleApplicationService {
         long articleIdValue = parseArticleId(articleId);
         ArticleDO existing = articleRepository.findArticleById(articleIdValue)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ARTICLE_NOT_FOUND));
+        if (existing.status() != 1) {
+            throw new BusinessException(ErrorCode.ARTICLE_NOT_FOUND);
+        }
         if (existing.authorId() != authorId) {
             throw new BusinessException(ErrorCode.ARTICLE_AUTHOR_MISMATCH);
         }
@@ -221,6 +288,31 @@ public class ArticleApplicationService {
 
         domainEventPublisher.publish(new ArticleUpdatedEvent(articleId, now));
         return getArticleDetail(articleId, authorId);
+    }
+
+    /**
+     * 作用：删除当前用户自己的文章，并清理 Feed 时间线与缓存。
+     * 输入：authorId 为当前用户 ID，articleId 为文章 ID 字符串。
+     * 输出：无；若文章不存在、已删除或非本人文章则抛业务异常。
+     */
+    @Transactional
+    public void deleteArticle(Long authorId, String articleId) {
+        long articleIdValue = parseArticleId(articleId);
+        ArticleDO existing = articleRepository.findArticleById(articleIdValue)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ARTICLE_NOT_FOUND));
+        if (existing.status() != 1) {
+            throw new BusinessException(ErrorCode.ARTICLE_NOT_FOUND);
+        }
+        if (existing.authorId() != authorId) {
+            throw new BusinessException(ErrorCode.ARTICLE_AUTHOR_MISMATCH);
+        }
+
+        boolean deleted = articleRepository.softDeleteArticle(articleIdValue, authorId);
+        if (!deleted) {
+            throw new BusinessException(ErrorCode.ARTICLE_NOT_FOUND);
+        }
+        userProfileRepository.incrementArticleCount(authorId, -1);
+        domainEventPublisher.publish(new ArticleDeletedEvent(articleId, timeProvider.now()));
     }
 
     /**

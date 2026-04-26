@@ -37,6 +37,8 @@ public interface ArticleRepository {
      */
     Optional<ArticleDetailDO> findDetailById(long articleId);
 
+    List<ArticleDetailDO> findDetailsByIds(List<Long> articleIds);
+
     /**
      * 作用：查询首页 Feed 卡片数据。
      * 输入：authorId 为可选作者 ID，offset 为偏移量，limit 为每页数量。
@@ -92,6 +94,13 @@ public interface ArticleRepository {
      * 输出：true 表示更新成功，false 表示未更新。
      */
     boolean updateArticle(ArticleDO article);
+
+    /**
+     * 作用：软删除文章。
+     * 输入：articleId 为文章 ID，authorId 为作者 ID。
+     * 输出：true 表示删除成功，false 表示文章不存在、作者不匹配或已经删除。
+     */
+    boolean softDeleteArticle(long articleId, long authorId);
 
     /**
      * 作用：替换文章图片列表。

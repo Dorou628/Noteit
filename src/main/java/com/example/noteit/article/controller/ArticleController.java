@@ -11,6 +11,7 @@ import com.example.noteit.common.response.ApiResponse;
 import com.example.noteit.common.response.PageResponse;
 import jakarta.validation.Valid;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -84,5 +85,17 @@ public class ArticleController {
     ) {
         Long currentUserId = currentUserResolver.getRequiredUserId();
         return ApiResponse.success(articleApplicationService.updateArticle(currentUserId, articleId, request));
+    }
+
+    /**
+     * 作用：删除已有文章。
+     * 输入：articleId 为路径中的文章 ID，当前用户从请求头解析。
+     * 输出：无；删除后文章会从公开 Feed 和关注 Feed 中移除。
+     */
+    @DeleteMapping("/{articleId}")
+    public ApiResponse<Void> deleteArticle(@PathVariable String articleId) {
+        Long currentUserId = currentUserResolver.getRequiredUserId();
+        articleApplicationService.deleteArticle(currentUserId, articleId);
+        return ApiResponse.success(null);
     }
 }

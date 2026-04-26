@@ -100,9 +100,38 @@
         FROM article a
         LEFT JOIN user_profile up ON up.id = a.author_id
         WHERE a.id = #{id}
+          AND a.status = 1
     </select>
 
     <!-- 首页 Feed 当前走 MySQL 基础分页，后续可替换为收件箱/发件箱读模型。 -->
+    <select id="findDetailsByIds" resultMap="ArticleDetailResultMap">
+        SELECT a.id,
+               a.author_id,
+               a.title,
+               a.content_text,
+               a.content_storage_type,
+               a.content_object_key,
+               a.content_url,
+               a.content_format,
+               a.content_preview,
+               a.cover_url,
+               a.like_count,
+               a.favorite_count,
+               a.summary_status,
+               a.summary_text,
+               a.created_at,
+               a.updated_at,
+               up.nickname AS author_nickname,
+               up.avatar_url AS author_avatar_url
+        FROM article a
+        LEFT JOIN user_profile up ON up.id = a.author_id
+        WHERE a.status = 1
+          AND a.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
     <select id="findFeedArticles" resultMap="ArticleDetailResultMap">
         SELECT a.id,
                a.author_id,
@@ -237,5 +266,16 @@
             updated_at = CURRENT_TIMESTAMP
         WHERE id = #{id}
           AND author_id = #{authorId}
+          AND status = 1
+    </update>
+
+    <update id="softDelete">
+        UPDATE article
+        SET status = 0,
+            version = version + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND author_id = #{authorId}
+          AND status = 1
     </update>
 </mapper>

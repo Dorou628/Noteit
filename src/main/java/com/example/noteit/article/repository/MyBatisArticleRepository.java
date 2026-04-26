@@ -62,6 +62,14 @@ public class MyBatisArticleRepository implements ArticleRepository {
         return Optional.ofNullable(articleMapper.findDetailById(articleId));
     }
 
+    @Override
+    public List<ArticleDetailDO> findDetailsByIds(List<Long> articleIds) {
+        if (articleIds == null || articleIds.isEmpty()) {
+            return List.of();
+        }
+        return articleMapper.findDetailsByIds(articleIds);
+    }
+
     /**
      * 作用：分页查询首页 Feed 文章。
      * 输入：authorId 为可选作者 ID，offset 为偏移量，limit 为每页数量。
@@ -140,6 +148,16 @@ public class MyBatisArticleRepository implements ArticleRepository {
     @Override
     public boolean updateArticle(ArticleDO article) {
         return articleMapper.update(article) > 0;
+    }
+
+    /**
+     * 作用：软删除文章。
+     * 输入：articleId 为文章 ID，authorId 为作者 ID。
+     * 输出：true 表示至少更新一行。
+     */
+    @Override
+    public boolean softDeleteArticle(long articleId, long authorId) {
+        return articleMapper.softDelete(articleId, authorId) > 0;
     }
 
     /**

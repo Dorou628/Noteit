@@ -23,6 +23,9 @@ management:
       enabled: false
 
 noteit:
+  feed:
+    cache:
+      enabled: false
   oss:
     endpoint: https://oss-cn-test.aliyuncs.com
     bucket: noteit-test

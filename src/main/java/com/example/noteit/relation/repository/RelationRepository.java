@@ -23,4 +23,6 @@ public interface RelationRepository {
     List<UserProfileDO> findFollowerProfiles(long userId, int offset, int limit);
 
     long countFollowerProfiles(long userId);
+
+    List<Long> findActiveFollowerIds(long followeeId);
 }

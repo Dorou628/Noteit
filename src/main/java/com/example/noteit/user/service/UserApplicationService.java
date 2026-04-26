@@ -69,6 +69,11 @@ public class UserApplicationService {
         return articleApplicationService.getPublishedArticles(authorId, currentUserId, pageNo, pageSize);
     }
 
+    public PageResponse<ArticleCardResponse> getMyFollowingFeed(Long currentUserId, int pageNo, int pageSize) {
+        ensureActiveUser(currentUserId);
+        return articleApplicationService.getFollowingFeed(currentUserId, pageNo, pageSize);
+    }
+
     public PageResponse<ArticleCardResponse> getMyLikedArticles(Long currentUserId, int pageNo, int pageSize) {
         return interactionApplicationService.getLikedArticles(currentUserId, pageNo, pageSize);
     }
@@ -96,6 +101,15 @@ public class UserApplicationService {
         } catch (NumberFormatException ex) {
             throw new BusinessException(ErrorCode.INVALID_PARAMETER, "userId must be a number");
         }
+    }
+
+    private UserProfileDO ensureActiveUser(long userId) {
+        return userProfileRepository.findById(userId)
+                .filter(user -> user.status() == 1)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.RESOURCE_NOT_FOUND,
+                        "User profile was not found"
+                ));
     }
 
     private String trimToNull(String value) {

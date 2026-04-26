@@ -351,18 +351,43 @@ X-User-Id: 3001
 
 规则：
 - 仅作者可更新。
+- 已删除文章不可更新。
 - 更新后摘要状态重置为 `PENDING`。
 - 更新图片时以后端收到的 `images` 列表整体替换原文章图片。
+- Feed 缓存只存文章 ID，文章卡片详情会回表读取最新标题、摘要和封面；更新文章不需要失效 inbox/outbox 时间线缓存。
 
 成功响应：`data` 为 ArticleDetail。
 
 失败响应：
 - 401 `UNAUTHORIZED`：未传 `X-User-Id`
 - 403 `ARTICLE_AUTHOR_MISMATCH`：非作者更新
-- 404 `ARTICLE_NOT_FOUND`：文章不存在或 ID 非法
+- 404 `ARTICLE_NOT_FOUND`：文章不存在、ID 非法或文章已删除
 - 400 `INVALID_PARAMETER` / `ARTICLE_TITLE_EMPTY` / `ARTICLE_CONTENT_EMPTY`
 
-### 5.3 获取文章详情
+### 5.3 删除文章
+状态：已实现
+
+```http
+DELETE /api/v1/articles/{articleId}
+X-User-Id: 3001
+```
+
+成功响应：`data` 为 `null`。
+
+规则：
+- 仅作者可删除。
+- 当前为软删除：`article.status` 从 `1` 改为 `0`。
+- 删除成功后扣减作者 `user_profile.article_count`。
+- 删除成功后删除 MySQL `article_outbox` / `user_inbox` 中该文章的时间线记录。
+- 删除成功后失效作者 outbox 缓存，并失效当前粉丝的 inbox 缓存；下一次读取从 MySQL 重建，保证缓存最终一致。
+- 已删除文章不会出现在文章详情、公共 Feed、关注 Feed、点赞列表和收藏列表中。
+
+失败响应：
+- 401 `UNAUTHORIZED`：未传 `X-User-Id`
+- 403 `ARTICLE_AUTHOR_MISMATCH`：非作者删除
+- 404 `ARTICLE_NOT_FOUND`：文章不存在、ID 非法或文章已删除
+
+### 5.4 获取文章详情
 状态：已实现
 
 ```http
@@ -381,11 +406,12 @@ X-User-Id: 3001
 - 未登录也可读取。
 - 登录时返回当前用户对该文章的 `liked`、`favorited` 状态。
 - 当前 DB 正文模式下 `contentObjectKey`、`contentUrl` 返回 `null`。
+- 已删除文章不可读取。
 
 失败响应：
-- 404 `ARTICLE_NOT_FOUND`：文章不存在或 ID 非法
+- 404 `ARTICLE_NOT_FOUND`：文章不存在、ID 非法或文章已删除
 
-### 5.4 首页 Feed
+### 5.5 首页公共 Feed
 状态：已实现，对应交付计划阶段 5
 
 ```http
@@ -403,10 +429,12 @@ GET /api/v1/articles?pageNo=1&pageSize=10
 成功响应：`data` 为 `PageResponse<ArticleCard>`。
 
 当前实现说明：
-- 当前走 MySQL 基础分页，查询已发布文章。
+- 这是公共/发现 Feed，未登录也可读取。
+- 当前走 MySQL 基础分页，查询全站已发布文章。
 - 默认按 `published_at DESC, id DESC` 排序。
 - 登录时卡片会返回当前用户的 `liked` / `favorited` 状态。
-- 未来演进方向为收件箱/发件箱推拉结合、游标化深分页和三级缓存；外部响应结构不变。
+- 该接口后续可演进为最新/热度/推荐排序，但不承载关注收件箱语义。
+- 关注 Feed 使用 `GET /api/v1/users/me/feed`。
 
 失败响应：
 - 400 `INVALID_PARAMETER`：分页参数小于 `1`
@@ -869,6 +897,41 @@ X-User-Id: 3001
 - 401 `UNAUTHORIZED`
 - 400 `INVALID_PARAMETER`
 
+### 9.6 获取我的关注 Feed
+状态：已实现，Feed 扩展能力，当前采用 MySQL 收件箱/发件箱写扩散，并已接入 Redis ZSet 缓存层
+
+```http
+GET /api/v1/users/me/feed?pageNo=1&pageSize=10
+X-User-Id: 3001
+```
+
+查询参数：
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `pageNo` | 否 | 默认 `1` |
+| `pageSize` | 否 | 默认 `10`，最大 `20` |
+
+成功响应：`data` 为 `PageResponse<ArticleCard>`。
+
+当前实现说明：
+- 该接口是登录用户的关注 Feed，也就是收件箱流。
+- 作者发布文章时，请求事务只写文章事实和 `event_outbox`；后台 worker 消费 `ArticlePublished` 事件后写入作者 `article_outbox`，并投递到粉丝 `user_inbox`。
+- 用户关注作者时，请求事务只写关注关系和 `event_outbox`；后台 worker 消费 `FollowRelationshipChanged` 事件后，把该作者最近文章回填到当前用户 `user_inbox`。
+- 用户取关作者时，请求事务只写关注关系和 `event_outbox`；后台 worker 消费事件后删除当前用户收件箱中该作者的文章记录。
+- 当前按 `published_at DESC, article_id DESC` 排序。
+- 返回文章卡片、作者、摘要、互动计数和当前用户互动状态。
+- MySQL `user_inbox` / `article_outbox` 仍是事实数据源；Redis ZSet 只作为读路径缓存。
+- 缓存开启时，读接口优先从 Redis 收件箱 ZSet 取文章 ID，再批量回表加载文章卡片详情；缓存未命中或 Redis 异常时自动降级到 MySQL。
+- MySQL 降级查询成功后，会按 `noteit.feed.cache.rebuild-limit` 回填当前用户最近收件箱到 Redis，便于后续请求命中。
+- 关注作者时，系统会优先使用作者 Redis 发件箱 ZSet 做回填；发件箱缓存未命中时从 MySQL `article_outbox` 读取最近窗口并重建 Redis。
+- 发布/关注/取关会通过 DB outbox worker 异步维护或失效相关缓存；接口响应结构不变，前端无需改动，但关注 Feed 是最终一致。
+
+失败响应：
+- 401 `UNAUTHORIZED`
+- 400 `INVALID_PARAMETER`
+- 404 `RESOURCE_NOT_FOUND`：当前用户资料不存在或不可用
+
 ## 10. 交付计划与接口对应关系
 | 交付阶段 | 接口契约 | 当前代码状态 |
 | --- | --- | --- |
@@ -876,7 +939,8 @@ X-User-Id: 3001
 | 阶段 2：认证边界稳定化 | 明文密码登录；请求头模拟鉴权；`X-User-Id`、`X-User-Nickname`；JWT 接口后续预留 | 已实现 |
 | 阶段 3：互动 MVP | 点赞/取消点赞、收藏/取消收藏、我赞过的/我收藏的列表 | 已实现 |
 | 阶段 4：关注 MVP | 关注/取关、关注列表、粉丝列表、用户主页 `followed` 状态、作者 `followed` 状态 | 已实现 |
-| 阶段 5：Feed MVP | 首页 Feed、用户已发布文章、编辑个人信息、基础分页排序 | 已实现基础 MySQL 查询 |
+| 阶段 5：Feed MVP | 首页公共 Feed、用户已发布文章、编辑个人信息、基础分页排序 | 已实现基础 MySQL 查询 |
+| Feed 扩展：关注收件箱 | `GET /users/me/feed`；发布写 outbox；关注回填 inbox；取关清理 inbox | 已实现 DB outbox 异步写扩散 + Redis ZSet 缓存层 |
 | 阶段 6：认证正式化 | 登录响应增加 JWT；刷新、登出；业务接口迁移到 JWT 鉴权 | 仅后续预留 |
 
 ## 11. 后续演进约束
@@ -884,5 +948,6 @@ X-User-Id: 3001
 - ArticleDetail 和 ArticleCard 的字段名不因内部存储迁移而变化。
 - 正文从 DB 切到 OSS 时，详情仍返回 `content`；`contentObjectKey`、`contentUrl` 从 `null` 变为真实兼容字段。
 - 点赞从 MySQL 切到 Bitmap、收藏从 MySQL 切到 ZSet 时，互动接口响应不变。
-- Feed 从 MySQL 查询切到收件箱/发件箱、缓存和游标化读模型时，分页响应结构不变；若新增 cursor，需要以可选字段或新版本接口方式演进。
+- 公共 Feed 可以独立演进为最新、热度或推荐排序；关注 Feed 使用收件箱/发件箱读模型。
+- Feed 从 MySQL 收件箱/发件箱切到 Redis ZSet、缓存和游标化读模型时，分页响应结构不变；若新增 cursor，需要以可选字段或新版本接口方式演进。
 - 关注从 MySQL 强一致切到 Outbox + Canal + Kafka 事件链路时，关注/取关接口响应不变。

@@ -39,4 +39,6 @@ public interface RelationMapper {
     );
 
     long countFollowerProfiles(@Param("userId") long userId);
+
+    List<Long> findActiveFollowerIds(@Param("followeeId") long followeeId);
 }

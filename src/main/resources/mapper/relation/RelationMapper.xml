@@ -104,4 +104,12 @@
           AND uf.status = 1
           AND up.status = 1
     </select>
+
+    <select id="findActiveFollowerIds" resultType="_long">
+        SELECT follower_id
+        FROM user_follow
+        WHERE followee_id = #{followeeId}
+          AND status = 1
+        ORDER BY updated_at DESC, id DESC
+    </select>
 </mapper>

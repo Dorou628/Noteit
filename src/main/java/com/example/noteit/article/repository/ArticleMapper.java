@@ -31,6 +31,8 @@ public interface ArticleMapper {
      */
     ArticleDetailDO findDetailById(@Param("id") long id);
 
+    List<ArticleDetailDO> findDetailsByIds(@Param("ids") List<Long> ids);
+
     /**
      * 作用：分页查询首页 Feed 文章。
      * 输入：authorId 为可选作者 ID，offset 为偏移量，limit 为每页数量。
@@ -91,4 +93,9 @@ public interface ArticleMapper {
      * 输出：返回受影响行数。
      */
     int update(ArticleDO article);
+
+    int softDelete(
+            @Param("id") long id,
+            @Param("authorId") long authorId
+    );
 }

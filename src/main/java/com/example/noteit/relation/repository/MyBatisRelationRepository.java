@@ -55,4 +55,9 @@ public class MyBatisRelationRepository implements RelationRepository {
     public long countFollowerProfiles(long userId) {
         return relationMapper.countFollowerProfiles(userId);
     }
+
+    @Override
+    public List<Long> findActiveFollowerIds(long followeeId) {
+        return relationMapper.findActiveFollowerIds(followeeId);
+    }
 }

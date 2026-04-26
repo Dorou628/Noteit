@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.noteit.article.repository.FeedTimelineMapper">
+
+    <resultMap id="FeedTimelineEntryResultMap" type="com.example.noteit.article.model.FeedTimelineEntryDO">
+        <constructor>
+            <idArg column="id" javaType="_long"/>
+            <arg column="user_id" javaType="java.lang.Long"/>
+            <arg column="author_id" javaType="_long"/>
+            <arg column="article_id" javaType="_long"/>
+            <arg column="published_at" javaType="java.time.LocalDateTime"/>
+            <arg column="created_at" javaType="java.time.LocalDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <insert id="insertOutboxIfAbsent">
+        INSERT INTO article_outbox (id, author_id, article_id, published_at)
+        SELECT #{id}, #{authorId}, #{articleId}, #{publishedAt}
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM article_outbox
+            WHERE author_id = #{authorId}
+              AND article_id = #{articleId}
+        )
+    </insert>
+
+    <insert id="insertInboxIfAbsent">
+        INSERT INTO user_inbox (id, user_id, author_id, article_id, published_at)
+        SELECT #{id}, #{userId}, #{authorId}, #{articleId}, #{publishedAt}
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM user_inbox
+            WHERE user_id = #{userId}
+              AND article_id = #{articleId}
+        )
+    </insert>
+
+    <select id="findRecentOutboxEntries" resultMap="FeedTimelineEntryResultMap">
+        SELECT id, NULL AS user_id, author_id, article_id, published_at, created_at
+        FROM article_outbox
+        WHERE author_id = #{authorId}
+        ORDER BY published_at DESC, article_id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countOutboxEntries" resultType="_long">
+        SELECT COUNT(*)
+        FROM article_outbox
+        WHERE author_id = #{authorId}
+    </select>
+
+    <select id="findRecentInboxEntries" resultMap="FeedTimelineEntryResultMap">
+        SELECT id, user_id, author_id, article_id, published_at, created_at
+        FROM user_inbox
+        WHERE user_id = #{userId}
+        ORDER BY published_at DESC, article_id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findInboxArticles" resultMap="com.example.noteit.article.repository.ArticleMapper.ArticleDetailResultMap">
+        SELECT a.id,
+               a.author_id,
+               a.title,
+               a.content_text,
+               a.content_storage_type,
+               a.content_object_key,
+               a.content_url,
+               a.content_format,
+               a.content_preview,
+               a.cover_url,
+               a.like_count,
+               a.favorite_count,
+               a.summary_status,
+               a.summary_text,
+               a.created_at,
+               a.updated_at,
+               up.nickname AS author_nickname,
+               up.avatar_url AS author_avatar_url
+        FROM user_inbox ui
+        INNER JOIN article a ON a.id = ui.article_id
+        LEFT JOIN user_profile up ON up.id = a.author_id
+        WHERE ui.user_id = #{userId}
+          AND a.status = 1
+        ORDER BY ui.published_at DESC, ui.article_id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countInboxArticles" resultType="_long">
+        SELECT COUNT(*)
+        FROM user_inbox ui
+        INNER JOIN article a ON a.id = ui.article_id
+        WHERE ui.user_id = #{userId}
+          AND a.status = 1
+    </select>
+
+    <delete id="deleteInboxByAuthor">
+        DELETE FROM user_inbox
+        WHERE user_id = #{userId}
+          AND author_id = #{authorId}
+    </delete>
+
+    <delete id="deleteOutboxByArticle">
+        DELETE FROM article_outbox
+        WHERE article_id = #{articleId}
+    </delete>
+
+    <delete id="deleteInboxByArticle">
+        DELETE FROM user_inbox
+        WHERE article_id = #{articleId}
+    </delete>
+</mapper>
