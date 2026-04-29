@@ -27,6 +27,7 @@ The API contract is maintained in [docs/API-MVP.md](docs/API-MVP.md).
 - MyBatis 4.0.0
 - Flyway
 - MySQL for development
+- Kafka and Canal through Docker Compose for the event outbox extension
 - H2 for automated tests
 - Maven Wrapper
 
@@ -65,7 +66,7 @@ The test profile uses H2 and does not require a local MySQL instance.
 
 ## Configuration
 
-The default profile is `dev,local`. Development database settings can be provided with environment variables:
+The Docker-based local profile is `dev`. Development database settings can be provided with environment variables:
 
 | Variable | Default |
 | --- | --- |
@@ -90,6 +91,43 @@ CREATE DATABASE noteit CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 Flyway will create and seed the schema on startup.
 
 ## Run Locally
+
+Start local infrastructure when using the `dev` profile:
+
+```powershell
+docker compose up -d mysql redis kafka kafka-ui canal
+```
+
+Local service ports are exposed for visual debugging tools:
+
+| Service | Host | Port | Credentials |
+| --- | --- | --- | --- |
+| MySQL | `localhost` | `3306` | `root` / `root`, database `noteit` |
+| Redis | `localhost` | `6379` | no password |
+| Kafka | `localhost` | `9092` | no auth |
+| Kafka UI | `localhost` | `8082` | no auth |
+| Canal | `localhost` | `11111` | no auth |
+
+Kafka UI is available at:
+
+```text
+http://localhost:8082
+```
+
+It connects to the local compose Kafka cluster through `kafka:29092`. The Spring Boot app still connects from the host through `localhost:9092` by default.
+
+The development profile uses Kafka dispatcher by default. To run without Kafka, set:
+
+```powershell
+$env:NOTEIT_EVENT_OUTBOX_DISPATCHER="local"
+```
+
+To run the Canal outbox chain instead of the DB polling worker:
+
+```powershell
+$env:NOTEIT_EVENT_OUTBOX_WORKER_ENABLED="false"
+$env:NOTEIT_CANAL_CONSUMER_ENABLED="true"
+```
 
 ```powershell
 .\mvnw.cmd spring-boot:run
@@ -219,4 +257,5 @@ Demo seed IDs are intentionally short:
 - [Delivery Plan](docs/DELIVERY-PLAN-MVP.md)
 - [Development Seed Data](docs/DEV-SEED-DATA.md)
 - [Database Schema](docs/DB-SCHEMA-MVP.md)
+- [Event Outbox Stage 3](docs/EVENT-OUTBOX-STAGE3.md)
 - [Technical Architecture](docs/TECH-ARCHITECTURE-MVP.md)

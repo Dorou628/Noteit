@@ -28,7 +28,7 @@ public interface FeedTimelineMapper {
 
     List<ArticleDetailDO> findInboxArticles(
             @Param("userId") long userId,
-            @Param("offset") int offset,
+            @Param("offset") long offset,
             @Param("limit") int limit
     );
 

@@ -45,9 +45,11 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class ArticleApplicationService {
@@ -113,9 +115,12 @@ public class ArticleApplicationService {
             int pageNo,
             int pageSize
     ) {
-        int offset = (pageNo - 1) * pageSize;
-        List<ArticleDetailDO> articles = articleRepository.findFeedArticles(authorId, offset, pageSize);
+        long offset = calculateOffset(pageNo, pageSize);
         long total = articleRepository.countFeedArticles(authorId);
+        if (offset >= total) {
+            return new PageResponse<>(pageNo, pageSize, total, List.of());
+        }
+        List<ArticleDetailDO> articles = articleRepository.findFeedArticles(authorId, offset, pageSize);
         List<ArticleCardResponse> records = articles.stream()
                 .map(article -> toCardResponse(article, currentUserId))
                 .toList();
@@ -123,10 +128,13 @@ public class ArticleApplicationService {
     }
 
     public PageResponse<ArticleCardResponse> getFollowingFeed(Long currentUserId, int pageNo, int pageSize) {
-        int offset = (pageNo - 1) * pageSize;
+        long offset = calculateOffset(pageNo, pageSize);
         Optional<CachedTimelinePage> cachedPage = feedTimelineCache.findInboxPage(currentUserId, offset, pageSize);
         if (cachedPage.isPresent()) {
             CachedTimelinePage page = cachedPage.get();
+            if (offset >= page.total()) {
+                return new PageResponse<>(pageNo, pageSize, page.total(), List.of());
+            }
             List<ArticleDetailDO> articles = findDetailsInTimelineOrder(page.articleIds());
             List<ArticleCardResponse> records = articles.stream()
                     .map(article -> toCardResponse(article, currentUserId))
@@ -134,9 +142,12 @@ public class ArticleApplicationService {
             return new PageResponse<>(pageNo, pageSize, page.total(), records);
         }
 
-        List<ArticleDetailDO> articles = feedTimelineRepository.findInboxArticles(currentUserId, offset, pageSize);
         long total = feedTimelineRepository.countInboxArticles(currentUserId);
         rebuildInboxCache(currentUserId, total);
+        if (offset >= total) {
+            return new PageResponse<>(pageNo, pageSize, total, List.of());
+        }
+        List<ArticleDetailDO> articles = feedTimelineRepository.findInboxArticles(currentUserId, offset, pageSize);
         List<ArticleCardResponse> records = articles.stream()
                 .map(article -> toCardResponse(article, currentUserId))
                 .toList();
@@ -155,18 +166,23 @@ public class ArticleApplicationService {
         if (articleIds == null || articleIds.isEmpty()) {
             return List.of();
         }
+        Set<Long> uniqueArticleIds = new LinkedHashSet<>(articleIds);
         Map<Long, ArticleDetailDO> detailById = new HashMap<>();
-        for (ArticleDetailDO detail : articleRepository.findDetailsByIds(articleIds)) {
+        for (ArticleDetailDO detail : articleRepository.findDetailsByIds(List.copyOf(uniqueArticleIds))) {
             detailById.put(detail.id(), detail);
         }
         List<ArticleDetailDO> ordered = new ArrayList<>();
-        for (Long articleId : articleIds) {
+        for (Long articleId : uniqueArticleIds) {
             ArticleDetailDO detail = detailById.get(articleId);
             if (detail != null) {
                 ordered.add(detail);
             }
         }
         return ordered;
+    }
+
+    private long calculateOffset(int pageNo, int pageSize) {
+        return ((long) pageNo - 1L) * pageSize;
     }
 
     /**
@@ -230,7 +246,7 @@ public class ArticleApplicationService {
         articleRepository.insertMedia(buildMediaList(articleId, request.images()));
         userProfileRepository.incrementArticleCount(authorId, 1);
 
-        domainEventPublisher.publish(new ArticlePublishedEvent(String.valueOf(articleId), now));
+        domainEventPublisher.publish(new ArticlePublishedEvent(String.valueOf(articleId), authorId, now));
         return getArticleDetail(String.valueOf(articleId), authorId);
     }
 
@@ -286,7 +302,7 @@ public class ArticleApplicationService {
         ));
         articleRepository.replaceMediaByArticleId(articleIdValue, buildMediaList(articleIdValue, request.images()));
 
-        domainEventPublisher.publish(new ArticleUpdatedEvent(articleId, now));
+        domainEventPublisher.publish(new ArticleUpdatedEvent(articleId, authorId, now));
         return getArticleDetail(articleId, authorId);
     }
 
@@ -312,7 +328,7 @@ public class ArticleApplicationService {
             throw new BusinessException(ErrorCode.ARTICLE_NOT_FOUND);
         }
         userProfileRepository.incrementArticleCount(authorId, -1);
-        domainEventPublisher.publish(new ArticleDeletedEvent(articleId, timeProvider.now()));
+        domainEventPublisher.publish(new ArticleDeletedEvent(articleId, authorId, timeProvider.now()));
     }
 
     /**

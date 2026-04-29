@@ -15,6 +15,8 @@
             <arg column="status" javaType="_int"/>
             <arg column="retry_count" javaType="_int"/>
             <arg column="next_retry_at" javaType="java.time.LocalDateTime"/>
+            <arg column="locked_by" javaType="string"/>
+            <arg column="locked_until" javaType="java.time.LocalDateTime"/>
             <arg column="last_error" javaType="string"/>
             <arg column="created_at" javaType="java.time.LocalDateTime"/>
             <arg column="updated_at" javaType="java.time.LocalDateTime"/>
@@ -30,19 +32,53 @@
         )
     </insert>
 
-    <select id="findPending" resultMap="EventOutboxResultMap">
+    <select id="findClaimCandidates" resultMap="EventOutboxResultMap">
         SELECT id, event_id, event_type, aggregate_type, aggregate_id, payload, status, retry_count,
-               next_retry_at, last_error, created_at, updated_at
+               next_retry_at, locked_by, locked_until, last_error, created_at, updated_at
         FROM event_outbox
-        WHERE status IN (0, 2)
-          AND (next_retry_at IS NULL OR next_retry_at &lt;= #{now})
+        WHERE (
+            status IN (0, 2)
+            AND (next_retry_at IS NULL OR next_retry_at &lt;= #{now})
+        ) OR (
+            status = 3
+            AND locked_until IS NOT NULL
+            AND locked_until &lt;= #{now}
+        )
         ORDER BY created_at ASC, id ASC
         LIMIT #{limit}
+    </select>
+
+    <update id="claim">
+        UPDATE event_outbox
+        SET status = 3,
+            locked_by = #{workerId},
+            locked_until = #{lockedUntil},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND (
+              (
+                  status IN (0, 2)
+                  AND (next_retry_at IS NULL OR next_retry_at &lt;= #{now})
+              ) OR (
+                  status = 3
+                  AND locked_until IS NOT NULL
+                  AND locked_until &lt;= #{now}
+              )
+          )
+    </update>
+
+    <select id="findById" resultMap="EventOutboxResultMap">
+        SELECT id, event_id, event_type, aggregate_type, aggregate_id, payload, status, retry_count,
+               next_retry_at, locked_by, locked_until, last_error, created_at, updated_at
+        FROM event_outbox
+        WHERE id = #{id}
     </select>
 
     <update id="markSent">
         UPDATE event_outbox
         SET status = 1,
+            locked_by = NULL,
+            locked_until = NULL,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = #{id}
     </update>
@@ -52,6 +88,18 @@
         SET status = 2,
             retry_count = retry_count + 1,
             next_retry_at = #{nextRetryAt},
+            locked_by = NULL,
+            locked_until = NULL,
+            last_error = #{lastError},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <update id="markDead">
+        UPDATE event_outbox
+        SET status = 4,
+            locked_by = NULL,
+            locked_until = NULL,
             last_error = #{lastError},
             updated_at = CURRENT_TIMESTAMP
         WHERE id = #{id}

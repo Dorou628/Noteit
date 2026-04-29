@@ -40,7 +40,7 @@ public interface ArticleMapper {
      */
     List<ArticleDetailDO> findFeedArticles(
             @Param("authorId") Long authorId,
-            @Param("offset") int offset,
+            @Param("offset") long offset,
             @Param("limit") int limit
     );
 
@@ -58,7 +58,7 @@ public interface ArticleMapper {
      */
     List<ArticleDetailDO> findLikedArticles(
             @Param("userId") long userId,
-            @Param("offset") int offset,
+            @Param("offset") long offset,
             @Param("limit") int limit
     );
 
@@ -76,7 +76,7 @@ public interface ArticleMapper {
      */
     List<ArticleDetailDO> findFavoritedArticles(
             @Param("userId") long userId,
-            @Param("offset") int offset,
+            @Param("offset") long offset,
             @Param("limit") int limit
     );
 

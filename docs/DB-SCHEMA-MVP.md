@@ -77,8 +77,8 @@
 - 当前仍使用 `pageNo/pageSize`；后续深分页可引入游标字段。
 - Redis ZSet 已作为缓存层接入，MySQL 仍是事实数据源。
 
-### 6.1 DB outbox 阶段一
-当前先用数据库 outbox + 本地 worker 实现异步化，还没有引入 Canal / Kafka：
+### 6.1 DB outbox 阶段一与阶段二
+当前先用数据库 outbox + 本地 worker 实现异步化，还没有引入 Canal / Kafka。阶段一完成“事务内写事件、后台消费、幂等写读模型”；阶段二补齐“抢占锁、超时恢复、死信、handler 拆分、日志观测”：
 
 | 事件 | 生产时机 | worker 动作 |
 | --- | --- | --- |
@@ -89,12 +89,38 @@
 
 worker 处理规则：
 
-- 轮询 `event_outbox.status IN (0, 2)` 且到达 `next_retry_at` 的事件。
-- 处理成功后标记 `status=1`。
-- 处理失败后标记 `status=2`，增加 `retry_count`，设置下一次重试时间。
+- 状态约定：`0=NEW`、`1=SENT`、`2=FAILED`、`3=PROCESSING`、`4=DEAD`。
+- worker 先查询可抢占事件，再通过条件更新把事件标记为 `PROCESSING`，并写入 `locked_by`、`locked_until`。
+- 可抢占事件包括 `NEW`、到达 `next_retry_at` 的 `FAILED`、以及 `locked_until <= now` 的超时 `PROCESSING`。
+- 处理成功后标记 `SENT`，并清空锁字段。
+- 处理失败后标记 `FAILED`，增加 `retry_count`，设置下一次重试时间，并清空锁字段。
+- 当 `retry_count + 1 >= noteit.event-outbox.worker.max-retries` 时标记 `DEAD`，后续不再自动消费，需要人工排查或独立补偿脚本处理。
+- 当前默认锁 TTL 为 `noteit.event-outbox.worker.lock-ttl-seconds=60` 秒；worker 异常退出后，锁到期即可被其他 worker 重新抢占。
+- 每批处理会记录 claimed、sent、failed、costMillis、workerId，便于后续接入监控。
 - 派生模型写入必须保持幂等，例如 outbox/inbox 通过唯一键避免重复投递。
+- 事件处理逻辑已经拆到 `EventOutboxHandler`，当前 feed handler 处理文章发布、删除、更新和关注关系变化；Kafka consumer 也复用同一批 handler。
 
-### 6.2 Redis ZSet 映射
+### 6.2 DB outbox 阶段三
+阶段三引入 Kafka 作为事件总线，保留 DB outbox 的抢占、重试和死信能力：
+
+- `noteit.event-outbox.dispatcher=local`：worker 抢到事件后直接调用本地 handler，行为等同阶段二。
+- `noteit.event-outbox.dispatcher=kafka`：worker 抢到事件后发布到 Kafka topic `noteit.event-outbox`，发布成功后标记 `SENT`。
+- `KafkaEventOutboxConsumer` 消费 `noteit.event-outbox`，再调用 `EventOutboxHandler` 更新 `article_outbox`、`user_inbox` 和 Redis 缓存。
+- Kafka 是至少一次投递，派生模型必须继续保持幂等。
+- `article_outbox`、`user_inbox` 已使用唯一键和 `INSERT IGNORE` 避免重复投递造成唯一键异常。
+- 本地 `docker-compose.yml` 已提供 Kafka 和 Canal；Canal 当前作为 CDC 基础设施预留，真正采集 MySQL binlog 还需要 MySQL 开启 binlog 与后续消费者转换层。
+
+### 6.3 DB outbox 阶段四
+阶段四补齐 Canal 到应用消费者的业务闭环：
+
+- Canal 采集 MySQL binlog 后写入 Kafka topic `noteit.canal`。
+- 应用侧 `CanalEventOutboxConsumer` 只处理 `event_outbox` 表的 `INSERT` flatMessage。
+- consumer 将 Canal 行数据还原为 `EventOutboxDO`，复用 `EventOutboxHandlerInvoker` 和现有 feed handler。
+- handler 成功后标记该 outbox 行 `SENT`；失败时抛给 Kafka consumer 重试。
+- 阶段四启用时建议设置 `NOTEIT_EVENT_OUTBOX_WORKER_ENABLED=false`、`NOTEIT_CANAL_CONSUMER_ENABLED=true`，避免阶段三 worker 和阶段四 Canal 同时处理同一条 outbox。
+- 不直接消费 `article`、`user_follow` 等普通业务表生成 feed 事件，避免从低层 row change 反推业务语义造成误分发。
+
+### 6.4 Redis ZSet 映射
 当前 Redis 只缓存时间线 ID，不缓存文章完整内容：
 
 | 语义 | Redis key | 类型 | member | score |

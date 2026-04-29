@@ -194,6 +194,21 @@ class ArticleApplicationServiceTest {
     }
 
     @Test
+    void getFeedShouldReturnEmptyRecordsWhenPageIsPastEnd() {
+        articleApplicationService.createArticle(2301L, createRequest("past-end"));
+
+        PageResponse<ArticleCardResponse> feed = articleApplicationService.getFeed(
+                new ArticleFeedQuery(Integer.MAX_VALUE, 20, null),
+                null
+        );
+
+        assertThat(feed.pageNo()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(feed.pageSize()).isEqualTo(20);
+        assertThat(feed.total()).isEqualTo(1);
+        assertThat(feed.records()).isEmpty();
+    }
+
+    @Test
     void getFeedShouldRejectInvalidAuthorId() {
         assertThatThrownBy(() -> articleApplicationService.getFeed(new ArticleFeedQuery(1, 10, "abc"), null))
                 .isInstanceOf(BusinessException.class)

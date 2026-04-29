@@ -16,25 +16,13 @@
     </resultMap>
 
     <insert id="insertOutboxIfAbsent">
-        INSERT INTO article_outbox (id, author_id, article_id, published_at)
-        SELECT #{id}, #{authorId}, #{articleId}, #{publishedAt}
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM article_outbox
-            WHERE author_id = #{authorId}
-              AND article_id = #{articleId}
-        )
+        INSERT IGNORE INTO article_outbox (id, author_id, article_id, published_at)
+        VALUES (#{id}, #{authorId}, #{articleId}, #{publishedAt})
     </insert>
 
     <insert id="insertInboxIfAbsent">
-        INSERT INTO user_inbox (id, user_id, author_id, article_id, published_at)
-        SELECT #{id}, #{userId}, #{authorId}, #{articleId}, #{publishedAt}
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM user_inbox
-            WHERE user_id = #{userId}
-              AND article_id = #{articleId}
-        )
+        INSERT IGNORE INTO user_inbox (id, user_id, author_id, article_id, published_at)
+        VALUES (#{id}, #{userId}, #{authorId}, #{articleId}, #{publishedAt})
     </insert>
 
     <select id="findRecentOutboxEntries" resultMap="FeedTimelineEntryResultMap">

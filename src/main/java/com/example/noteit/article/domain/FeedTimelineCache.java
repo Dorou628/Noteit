@@ -7,7 +7,7 @@ import java.util.Optional;
 
 public interface FeedTimelineCache {
 
-    Optional<CachedTimelinePage> findInboxPage(long userId, int offset, int limit);
+    Optional<CachedTimelinePage> findInboxPage(long userId, long offset, int limit);
 
     Optional<List<FeedTimelineEntryDO>> findOutboxEntries(long authorId, int limit);
 

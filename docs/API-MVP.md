@@ -926,6 +926,10 @@ X-User-Id: 3001
 - MySQL 降级查询成功后，会按 `noteit.feed.cache.rebuild-limit` 回填当前用户最近收件箱到 Redis，便于后续请求命中。
 - 关注作者时，系统会优先使用作者 Redis 发件箱 ZSet 做回填；发件箱缓存未命中时从 MySQL `article_outbox` 读取最近窗口并重建 Redis。
 - 发布/关注/取关会通过 DB outbox worker 异步维护或失效相关缓存；接口响应结构不变，前端无需改动，但关注 Feed 是最终一致。
+- DB outbox worker 已具备阶段二可靠性保护：事件会先被抢占为 `PROCESSING`，写入 `locked_by` / `locked_until`；worker 异常退出后锁超时可恢复；多次失败达到上限后进入 `DEAD`，不会阻塞后续事件消费。
+- 阶段三已支持 Kafka dispatcher：本地 `local` profile 默认把 outbox 事件投递到 Kafka topic `noteit.event-outbox`，再由 consumer 复用 feed handler 完成写扩散；可通过 `NOTEIT_EVENT_OUTBOX_DISPATCHER=local` 回退到阶段二本地处理。
+- 阶段四已支持 Canal outbox consumer：开启 `NOTEIT_CANAL_CONSUMER_ENABLED=true` 且关闭 `NOTEIT_EVENT_OUTBOX_WORKER_ENABLED=false` 后，链路切为 Canal 采集 `event_outbox` insert，再由 `noteit.canal` consumer 调用同一批 handler。
+- 前端需要感知的是“创建文章、删除文章、关注、取关成功后，关注 Feed 可能存在秒级延迟”；接口仍返回同步业务结果，不返回事件处理状态。
 
 失败响应：
 - 401 `UNAUTHORIZED`
@@ -941,6 +945,9 @@ X-User-Id: 3001
 | 阶段 4：关注 MVP | 关注/取关、关注列表、粉丝列表、用户主页 `followed` 状态、作者 `followed` 状态 | 已实现 |
 | 阶段 5：Feed MVP | 首页公共 Feed、用户已发布文章、编辑个人信息、基础分页排序 | 已实现基础 MySQL 查询 |
 | Feed 扩展：关注收件箱 | `GET /users/me/feed`；发布写 outbox；关注回填 inbox；取关清理 inbox | 已实现 DB outbox 异步写扩散 + Redis ZSet 缓存层 |
+| Feed 扩展：outbox worker 阶段二 | worker 抢占锁、超时恢复、失败重试、死信、handler 拆分、批处理日志 | 已实现 |
+| Feed 扩展：outbox worker 阶段三 | Kafka dispatcher、Kafka consumer、Docker Compose Kafka/Canal、本地可回退配置 | 已实现 |
+| Feed 扩展：Canal 阶段四 | Canal 采集 `event_outbox`、消费 `noteit.canal`、复用 handler、成功后标记 `SENT` | 已实现 |
 | 阶段 6：认证正式化 | 登录响应增加 JWT；刷新、登出；业务接口迁移到 JWT 鉴权 | 仅后续预留 |
 
 ## 11. 后续演进约束

@@ -156,9 +156,12 @@ public class InteractionApplicationService {
      * 输出：返回用户生效点赞关系对应的文章卡片分页结果。
      */
     public PageResponse<ArticleCardResponse> getLikedArticles(Long userId, int pageNo, int pageSize) {
-        int offset = (pageNo - 1) * pageSize;
-        List<ArticleDetailDO> articles = articleRepository.findLikedArticles(userId, offset, pageSize);
+        long offset = calculateOffset(pageNo, pageSize);
         long total = articleRepository.countLikedArticles(userId);
+        if (offset >= total) {
+            return new PageResponse<>(pageNo, pageSize, total, List.of());
+        }
+        List<ArticleDetailDO> articles = articleRepository.findLikedArticles(userId, offset, pageSize);
         List<ArticleCardResponse> records = articles.stream()
                 .map(article -> toCardResponse(article, userId))
                 .toList();
@@ -171,13 +174,20 @@ public class InteractionApplicationService {
      * 输出：返回用户生效收藏关系对应的文章卡片分页结果。
      */
     public PageResponse<ArticleCardResponse> getFavoritedArticles(Long userId, int pageNo, int pageSize) {
-        int offset = (pageNo - 1) * pageSize;
-        List<ArticleDetailDO> articles = articleRepository.findFavoritedArticles(userId, offset, pageSize);
+        long offset = calculateOffset(pageNo, pageSize);
         long total = articleRepository.countFavoritedArticles(userId);
+        if (offset >= total) {
+            return new PageResponse<>(pageNo, pageSize, total, List.of());
+        }
+        List<ArticleDetailDO> articles = articleRepository.findFavoritedArticles(userId, offset, pageSize);
         List<ArticleCardResponse> records = articles.stream()
                 .map(article -> toCardResponse(article, userId))
                 .toList();
         return new PageResponse<>(pageNo, pageSize, total, records);
+    }
+
+    private long calculateOffset(int pageNo, int pageSize) {
+        return ((long) pageNo - 1L) * pageSize;
     }
 
     /**

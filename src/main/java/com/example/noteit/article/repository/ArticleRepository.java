@@ -44,7 +44,7 @@ public interface ArticleRepository {
      * 输入：authorId 为可选作者 ID，offset 为偏移量，limit 为每页数量。
      * 输出：返回文章卡片所需的详情数据列表。
      */
-    List<ArticleDetailDO> findFeedArticles(Long authorId, int offset, int limit);
+    List<ArticleDetailDO> findFeedArticles(Long authorId, long offset, int limit);
 
     /**
      * 作用：统计首页 Feed 的文章总数。
@@ -58,7 +58,7 @@ public interface ArticleRepository {
      * 输入：userId 为用户 ID，offset 为偏移量，limit 为每页数量。
      * 输出：返回文章卡片所需的详情数据列表。
      */
-    List<ArticleDetailDO> findLikedArticles(long userId, int offset, int limit);
+    List<ArticleDetailDO> findLikedArticles(long userId, long offset, int limit);
 
     /**
      * 作用：统计用户点赞过的文章数量。
@@ -72,7 +72,7 @@ public interface ArticleRepository {
      * 输入：userId 为用户 ID，offset 为偏移量，limit 为每页数量。
      * 输出：返回文章卡片所需的详情数据列表。
      */
-    List<ArticleDetailDO> findFavoritedArticles(long userId, int offset, int limit);
+    List<ArticleDetailDO> findFavoritedArticles(long userId, long offset, int limit);
 
     /**
      * 作用：统计用户收藏的文章数量。

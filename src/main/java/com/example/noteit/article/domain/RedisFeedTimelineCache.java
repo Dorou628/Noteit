@@ -39,7 +39,7 @@ public class RedisFeedTimelineCache implements FeedTimelineCache {
     }
 
     @Override
-    public Optional<CachedTimelinePage> findInboxPage(long userId, int offset, int limit) {
+    public Optional<CachedTimelinePage> findInboxPage(long userId, long offset, int limit) {
         if (!enabled) {
             return Optional.empty();
         }
@@ -239,7 +239,7 @@ public class RedisFeedTimelineCache implements FeedTimelineCache {
         }
     }
 
-    private boolean isOutsideCachedWindow(int offset, int limit, Long cachedSize, Long cachedTotal) {
+    private boolean isOutsideCachedWindow(long offset, int limit, Long cachedSize, Long cachedTotal) {
         if (cachedSize == null || cachedTotal == null) {
             return false;
         }

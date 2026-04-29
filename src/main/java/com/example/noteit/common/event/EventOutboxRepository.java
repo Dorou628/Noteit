@@ -7,9 +7,11 @@ public interface EventOutboxRepository {
 
     void add(EventOutboxDO event);
 
-    List<EventOutboxDO> findPending(LocalDateTime now, int limit);
+    List<EventOutboxDO> claimPending(LocalDateTime now, String workerId, LocalDateTime lockedUntil, int limit);
 
     void markSent(long id);
 
     void markFailed(long id, LocalDateTime nextRetryAt, String lastError);
+
+    void markDead(long id, String lastError);
 }

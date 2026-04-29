@@ -17,7 +17,7 @@ public interface FeedTimelineRepository {
 
     List<FeedTimelineEntryDO> findRecentInboxEntries(long userId, int limit);
 
-    List<ArticleDetailDO> findInboxArticles(long userId, int offset, int limit);
+    List<ArticleDetailDO> findInboxArticles(long userId, long offset, int limit);
 
     long countInboxArticles(long userId);
 

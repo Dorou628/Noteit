@@ -76,7 +76,7 @@ public class MyBatisArticleRepository implements ArticleRepository {
      * 输出：返回文章详情列表，供服务层组装卡片。
      */
     @Override
-    public List<ArticleDetailDO> findFeedArticles(Long authorId, int offset, int limit) {
+    public List<ArticleDetailDO> findFeedArticles(Long authorId, long offset, int limit) {
         return articleMapper.findFeedArticles(authorId, offset, limit);
     }
 
@@ -96,7 +96,7 @@ public class MyBatisArticleRepository implements ArticleRepository {
      * 输出：返回文章详情列表，供服务层组装卡片。
      */
     @Override
-    public List<ArticleDetailDO> findLikedArticles(long userId, int offset, int limit) {
+    public List<ArticleDetailDO> findLikedArticles(long userId, long offset, int limit) {
         return articleMapper.findLikedArticles(userId, offset, limit);
     }
 
@@ -116,7 +116,7 @@ public class MyBatisArticleRepository implements ArticleRepository {
      * 输出：返回文章详情列表，供服务层组装卡片。
      */
     @Override
-    public List<ArticleDetailDO> findFavoritedArticles(long userId, int offset, int limit) {
+    public List<ArticleDetailDO> findFavoritedArticles(long userId, long offset, int limit) {
         return articleMapper.findFavoritedArticles(userId, offset, limit);
     }
 

@@ -41,7 +41,7 @@ public class MyBatisFeedTimelineRepository implements FeedTimelineRepository {
     }
 
     @Override
-    public List<ArticleDetailDO> findInboxArticles(long userId, int offset, int limit) {
+    public List<ArticleDetailDO> findInboxArticles(long userId, long offset, int limit) {
         return feedTimelineMapper.findInboxArticles(userId, offset, limit);
     }
 

@@ -23,6 +23,16 @@ spring:
       password: ${NOTEIT_REDIS_PASSWORD:}
       database: ${NOTEIT_REDIS_DATABASE:0}
       timeout: ${NOTEIT_REDIS_TIMEOUT:2s}
+  kafka:
+    bootstrap-servers: ${NOTEIT_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
 mybatis:
   configuration:
@@ -39,6 +49,16 @@ noteit:
       enabled: ${NOTEIT_FEED_CACHE_ENABLED:false}
       ttl: ${NOTEIT_FEED_CACHE_TTL:30m}
       rebuild-limit: ${NOTEIT_FEED_CACHE_REBUILD_LIMIT:1000}
+  event-outbox:
+    dispatcher: ${NOTEIT_EVENT_OUTBOX_DISPATCHER:kafka}
+    kafka:
+      topic: ${NOTEIT_EVENT_OUTBOX_KAFKA_TOPIC:noteit.event-outbox}
+      consumer-group: ${NOTEIT_EVENT_OUTBOX_KAFKA_CONSUMER_GROUP:noteit-feed-fanout}
+  canal:
+    topic: ${NOTEIT_CANAL_TOPIC:noteit.canal}
+    consumer-group: ${NOTEIT_CANAL_CONSUMER_GROUP:noteit-canal-outbox}
+    consumer:
+      enabled: ${NOTEIT_CANAL_CONSUMER_ENABLED:false}
   article:
     content-storage-mode: ${NOTEIT_ARTICLE_CONTENT_STORAGE_MODE:DB}
   oss:

@@ -20,8 +20,12 @@ public class MyBatisEventOutboxRepository implements EventOutboxRepository {
     }
 
     @Override
-    public List<EventOutboxDO> findPending(LocalDateTime now, int limit) {
-        return eventOutboxMapper.findPending(now, limit);
+    public List<EventOutboxDO> claimPending(LocalDateTime now, String workerId, LocalDateTime lockedUntil, int limit) {
+        return eventOutboxMapper.findClaimCandidates(now, limit)
+                .stream()
+                .filter(event -> eventOutboxMapper.claim(event.id(), now, workerId, lockedUntil) > 0)
+                .map(event -> eventOutboxMapper.findById(event.id()))
+                .toList();
     }
 
     @Override
@@ -32,5 +36,10 @@ public class MyBatisEventOutboxRepository implements EventOutboxRepository {
     @Override
     public void markFailed(long id, LocalDateTime nextRetryAt, String lastError) {
         eventOutboxMapper.markFailed(id, nextRetryAt, lastError);
+    }
+
+    @Override
+    public void markDead(long id, String lastError) {
+        eventOutboxMapper.markDead(id, lastError);
     }
 }

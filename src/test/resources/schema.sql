@@ -121,6 +121,8 @@ CREATE TABLE event_outbox (
     status TINYINT NOT NULL DEFAULT 0,
     retry_count INT NOT NULL DEFAULT 0,
     next_retry_at TIMESTAMP,
+    locked_by VARCHAR(128),
+    locked_until TIMESTAMP,
     last_error VARCHAR(512),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
